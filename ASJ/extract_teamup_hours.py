@@ -1,12 +1,13 @@
-import requests
 import re
-import unicodedata
-from datetime import datetime, timedelta
-from typing import TypedDict
-from enum import Enum, auto
 import json
 import csv
 import os
+import unicodedata
+import argparse
+import requests
+from datetime import datetime, timedelta
+from typing import TypedDict
+from enum import Enum, auto
 
 class Etype(Enum):
     DIVISIONNAIRE = auto()
@@ -53,6 +54,19 @@ def find_member_by_inscription(inscription: str):
             if compare_inscriptions(inscription, insc):
                 return m
     return None
+
+def valid_date(s):
+    try:
+        return datetime.strptime(s, "%d-%m-%Y")
+    except ValueError:
+        msg = f"Format de date invalide : '{s}'. Le format attendu est JJ-MM-AAAA."
+        raise argparse.ArgumentTypeError(msg)
+
+parser = argparse.ArgumentParser(description="Teamup hours extraction tool 452")
+# parser.add_argument("--start", action="store", type=valid_date, required=True, help="Date de début au format JJ-MM-AAAA")
+# parser.add_argument("--end", action="store", type=valid_date, required=True, help="Date de fin au format JJ-MM-AAAA")
+parser.add_argument("--write-ld", action="store_true", default=False, help="Write learned data to json file")
+args = parser.parse_args()
 
 if os.path.exists("learned_data.json"):
     with open("learned_data.json") as f:
@@ -210,10 +224,11 @@ with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
                     hours_other += e["duration"]
             writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
 
-with open('learned_data.json', 'w') as f:
-    data = [{"identity": m["identity"],
-             "inscriptions": m["inscriptions"],
-             "division": m["division"],
-             "email_hashes": m["email_hashes"]} for m in members_list]
-    json.dump(data, f)
-    print("Données d'apprentissage sauvegardées")
+if args.write_ld:
+    with open('learned_data.json', 'w') as f:
+        data = [{"identity": m["identity"],
+                "inscriptions": m["inscriptions"],
+                "division": m["division"],
+                "email_hashes": m["email_hashes"]} for m in members_list]
+        json.dump(data, f)
+        print("Données d'apprentissage sauvegardées")
