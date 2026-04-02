@@ -15,14 +15,17 @@ class Etype(Enum):
     AUTRE = auto()
 
 class Event(TypedDict):
+    id: str
     name: str
     start_dt: datetime
     end_dt: datetime
     duration: int
     etype: Etype
+    required_members: int
+    signups: int
 
 class Member(TypedDict):
-    #identity: str
+    identity: str
     inscriptions: list[str]
     email_hashes: list[str]
     division: str
@@ -68,19 +71,24 @@ for month in range(1, 13):
 
     print(f"Traitement de {month:02d}/2025...")
     resp = requests.get(TEAMUP_URL)
+    events = resp.json()["events"]
+
+    # Local files for testing
     # with open(f"{month:02d}", "r") as f:
     #     events = json.load(f)["events"]
-    events = resp.json()["events"]
 
     for event in events:
         if datetime.fromisoformat(event["start_dt"]).month == month:
             try:
                 event_obj: Event = {
+                    "id": event["id"],
                     "name": event["title"],
                     "start_dt": datetime.fromisoformat(event["start_dt"]),
                     "end_dt": datetime.fromisoformat(event["end_dt"]),
                     "duration": int((datetime.fromisoformat(event["end_dt"]) - datetime.fromisoformat(event["start_dt"])).total_seconds() / 3600),
-                    "etype": Etype.AUTRE
+                    "etype": Etype.AUTRE,
+                    "required_members": event["custom"]["nombre_de_membres_ne_cessaires"],
+                    "signups": event["signup_count"]
                 }
                 if len(event["subcalendar_ids"]) > 1:
                     event_obj["etype"] = Etype.AUTRE
@@ -115,6 +123,10 @@ for month in range(1, 13):
                         member["events"].append(event_obj)
                         continue
                     
+                    match_inscription = re.fullmatch(r"(?P<identity>([a-z-]+ ){2,})\(.+\) [0-9]{3,4}.*", ''.join(c for c in unicodedata.normalize('NFD', inscription) if unicodedata.category(c) != 'Mn').lower())
+                    if not match_inscription:
+                        continue
+
                     member = find_member_by_inscription(inscription)
                     if member:
                         member["email_hashes"].append(email_hash)
@@ -126,6 +138,7 @@ for month in range(1, 13):
                         continue
 
                     members_list.append({
+                        "identity": match_inscription.group('identity').strip(),
                         "inscriptions": [inscription],
                         "email_hashes": [email_hash],
                         "division": division,
@@ -134,48 +147,37 @@ for month in range(1, 13):
             except KeyError:
                 pass
 
-nb_event = len(events_list)
-nb_event_div = 0
-nb_event_perf = 0
-nb_event_cb = 0
-nb_event_prive = 0
-nb_event_other = 0
-with open('events.csv', mode='w', newline='', encoding='utf-8-sig') as f:
+with open('events.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
-    writer.writerow(['Nom', 'Type', 'Date', 'Durée'])
+    writer.writerow(['ID', 'Nom', 'Type', 'Date', 'Durée', 'Nombre de membres nécessaires', 'Nombre d\'inscrits'])
 
     for event in events_list:
         if event["etype"] == Etype.DIVISIONNAIRE:
             event_type = "DIVISIONNAIRE"
-            nb_event_div += 1
         elif event["etype"] == Etype.PERFECTIONNEMENT:
             event_type = "PERFECTIONNEMENT"
-            nb_event_perf += 1
         elif event["etype"] == Etype.CENTRE_BELL:
             event_type = "CENTRE BELL"
-            nb_event_cb += 1
         elif event["etype"] == Etype.CENTRE_BELL_PRIVE:
             event_type = "CENTRE BELL PRIVÉ"
-            nb_event_prive += 1
         else:
             event_type = "AUTRE"
-            nb_event_other += 1
-        writer.writerow([event["name"], event_type, event["start_dt"], event["duration"]])
+        writer.writerow([event["id"], event["name"], event_type, event["start_dt"], event["duration"], event["required_members"], event["signups"]])
 
-print(f"Nombre d'événements au total: {nb_event}")
-print(f"Nombre d'événements divisionnaires: {nb_event_div}")
-print(f"Nombre d'événements de perfectionnements: {nb_event_perf}")
-print(f"Nombre d'événements Centre Bell: {nb_event_cb}")
-print(f"Nombre d'événements privés: {nb_event_prive}")
-print(f"Nombre d'événements autres: {nb_event_other}")
-
-with open('members.csv', mode='w', newline='', encoding='utf-8-sig') as f:
+with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
-    writer.writerow(['Nom', 'Division', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
+    writer.writerow(['Identité', 'ID événement', 'Nom', 'Date'])
+
+    for member in members_list:
+        for event in member["events"]:
+            writer.writerow([member["identity"], event["id"], event["name"], event["start_dt"]])
+
+with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
 
     for member in members_list:
         if member["division"] in ("452", "0452"):
-            shortest_name = min(zip([len(n) for n in member["inscriptions"]], member["inscriptions"]), key=lambda x: x[0])[1]
             hours = 0
             hours_div = 0
             hours_perf = 0
@@ -194,5 +196,5 @@ with open('members.csv', mode='w', newline='', encoding='utf-8-sig') as f:
                     hours_prive += e["duration"]
                 else:
                     hours_other += e["duration"]
-            writer.writerow([shortest_name, member["division"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
+            writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
 
