@@ -6,6 +6,7 @@ from typing import TypedDict
 from enum import Enum, auto
 import json
 import csv
+import os
 
 class Etype(Enum):
     DIVISIONNAIRE = auto()
@@ -53,10 +54,21 @@ def find_member_by_inscription(inscription: str):
                 return m
     return None
 
+if os.path.exists("learned_data.json"):
+    with open("learned_data.json") as f:
+        learned_data = json.load(f)
+        members_list: list[Member] = [{"identity": m["identity"],
+                                       "inscriptions": m["inscriptions"],
+                                       "division": m["division"],
+                                       "email_hashes": m["email_hashes"],
+                                       "events": []} for m in learned_data]
+        print("Données d'apprentissage chargées")
+else:
+    print("Pas de données d'apprentissage trouvées")
+    members_list: list[Member] = []
 
 print(f"Données extraite le {datetime.now()}")
 
-members_list: list[Member] = []
 events_list: list[Event] = []
 
 for month in range(1, 13):
@@ -198,3 +210,10 @@ with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
                     hours_other += e["duration"]
             writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
 
+with open('learned_data.json', 'w') as f:
+    data = [{"identity": m["identity"],
+             "inscriptions": m["inscriptions"],
+             "division": m["division"],
+             "email_hashes": m["email_hashes"]} for m in members_list]
+    json.dump(data, f)
+    print("Données d'apprentissage sauvegardées")
