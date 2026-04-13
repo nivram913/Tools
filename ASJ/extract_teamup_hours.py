@@ -55,67 +55,27 @@ def find_member_by_inscription(inscription: str):
                 return m
     return None
 
-def valid_date(s):
-    try:
-        return datetime.strptime(s, "%d-%m-%Y")
-    except ValueError:
-        msg = f"Format de date invalide : '{s}'. Le format attendu est JJ-MM-AAAA."
-        raise argparse.ArgumentTypeError(msg)
-
-parser = argparse.ArgumentParser(description="Teamup hours extraction tool 452")
-# parser.add_argument("--start", action="store", type=valid_date, required=True, help="Date de début au format JJ-MM-AAAA")
-# parser.add_argument("--end", action="store", type=valid_date, required=True, help="Date de fin au format JJ-MM-AAAA")
-parser.add_argument("--write-ld", action="store_true", default=False, help="Write learned data to json file")
-args = parser.parse_args()
-
-if os.path.exists("learned_data.json"):
-    with open("learned_data.json") as f:
-        learned_data = json.load(f)
-        members_list: list[Member] = [{"identity": m["identity"],
-                                       "inscriptions": m["inscriptions"],
-                                       "division": m["division"],
-                                       "email_hashes": m["email_hashes"],
-                                       "events": []} for m in learned_data]
-        print("Données d'apprentissage chargées")
-else:
-    print("Pas de données d'apprentissage trouvées")
-    members_list: list[Member] = []
-
-print(f"Données extraite le {datetime.now()}")
-
-events_list: list[Event] = []
-
-for month in range(1, 13):
-    start_date = datetime(2025, month, 1)
-    if month == 12:
-        end_date = datetime(2026, 1, 1) - timedelta(days=1)
-    else:
-        end_date = datetime(2025, month + 1, 1) - timedelta(days=1)
-
+def extract_teamup(start_dt: datetime, end_dt: datetime):
     TEAMUP_SECRET = ""
-    TEAMUP_URL = f"https://teamup.com/{TEAMUP_SECRET}/events?startDate={start_date.strftime('%Y-%m-%d')}&endDate={end_date.strftime('%Y-%m-%d')}&tz=America%2FToronto"
+    TEAMUP_URL = f"https://teamup.com/{TEAMUP_SECRET}/events?startDate={start_dt.strftime('%Y-%m-%d')}&endDate={end_dt.strftime('%Y-%m-%d')}&tz=America%2FToronto"
 
-    print(f"Traitement de {month:02d}/2025...")
     resp = requests.get(TEAMUP_URL)
     events = resp.json()["events"]
 
-    # Local files for testing
-    # with open(f"{month:02d}", "r") as f:
-    #     events = json.load(f)["events"]
-
     for event in events:
-        if datetime.fromisoformat(event["start_dt"]).month == month:
+        if (datetime.fromisoformat(event["start_dt"]).replace(tzinfo=None) - start_dt).total_seconds() >= 0:
             try:
                 event_obj: Event = {
                     "id": event["id"],
                     "name": event["title"],
-                    "start_dt": datetime.fromisoformat(event["start_dt"]),
-                    "end_dt": datetime.fromisoformat(event["end_dt"]),
+                    "start_dt": datetime.fromisoformat(event["start_dt"]).replace(tzinfo=None),
+                    "end_dt": datetime.fromisoformat(event["end_dt"]).replace(tzinfo=None),
                     "duration": int((datetime.fromisoformat(event["end_dt"]) - datetime.fromisoformat(event["start_dt"])).total_seconds() / 3600),
                     "etype": Etype.AUTRE,
                     "required_members": event["custom"]["nombre_de_membres_ne_cessaires"],
                     "signups": event["signup_count"]
                 }
+
                 if len(event["subcalendar_ids"]) > 1:
                     event_obj["etype"] = Etype.AUTRE
                 elif event["subcalendar_id"] == 9616459 and event["title"].startswith("Privé"):
@@ -173,6 +133,57 @@ for month in range(1, 13):
             except KeyError:
                 pass
 
+def valid_date(s):
+    try:
+        return datetime.strptime(s, "%d-%m-%Y")
+    except ValueError:
+        msg = f"Format de date invalide : '{s}'. Le format attendu est JJ-MM-AAAA."
+        raise argparse.ArgumentTypeError(msg)
+
+parser = argparse.ArgumentParser(description="Teamup hours extraction tool 452")
+parser.add_argument("--start", action="store", type=valid_date, required=True, help="Date de début au format JJ-MM-AAAA")
+parser.add_argument("--end", action="store", type=valid_date, required=True, help="Date de fin au format JJ-MM-AAAA")
+parser.add_argument("--write-ld", action="store_true", default=False, help="Write learned data to json file")
+args = parser.parse_args()
+
+if os.path.exists("learned_data.json"):
+    with open("learned_data.json") as f:
+        learned_data = json.load(f)
+        members_list: list[Member] = [{"identity": m["identity"],
+                                       "inscriptions": m["inscriptions"],
+                                       "division": m["division"],
+                                       "email_hashes": m["email_hashes"],
+                                       "events": []} for m in learned_data]
+        print("Données d'apprentissage chargées")
+else:
+    print("Pas de données d'apprentissage trouvées")
+    members_list: list[Member] = []
+
+start_date: datetime = args.start
+end_date: datetime = args.end
+delta: timedelta = args.end - args.start
+events_list: list[Event] = []
+
+if delta.days < 0:
+    print("La date de début doit être antérieure à la date de fin")
+    exit(1)
+
+print(f"Données extraite le {datetime.now()}")
+
+current_date = start_date
+while current_date < end_date:
+    tmp_end_date = min(current_date + timedelta(days=30), end_date)
+    
+    print(f"Extraction du {current_date.date()} au {tmp_end_date.date()}...")
+    extract_teamup(current_date, tmp_end_date)
+    
+    current_date = tmp_end_date + timedelta(days=1) if tmp_end_date < end_date else end_date
+
+
+####################
+# Ecriture des CSV #
+####################
+
 with open('events.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     writer.writerow(['ID', 'Nom', 'Type', 'Date', 'Durée', 'Nombre de membres nécessaires', 'Nombre d\'inscrits'])
@@ -188,7 +199,7 @@ with open('events.csv', mode='w', newline='', encoding='utf-8') as f:
             event_type = "CENTRE BELL PRIVÉ"
         else:
             event_type = "AUTRE"
-        writer.writerow([event["id"], event["name"], event_type, event["start_dt"], event["duration"], event["required_members"], event["signups"]])
+        writer.writerow([event["id"], event["name"], event_type, event["start_dt"].strftime('%Y-%m-%dT%H:%M'), event["duration"], event["required_members"], event["signups"]])
 
 with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
@@ -196,33 +207,33 @@ with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
 
     for member in members_list:
         for event in member["events"]:
-            writer.writerow([member["identity"], event["id"], event["name"], event["start_dt"]])
+            writer.writerow([member["identity"], event["id"], event["name"], event["start_dt"].strftime('%Y-%m-%dT%H:%M')])
 
-with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
+# with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
+#     writer = csv.writer(f)
+#     writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
 
-    for member in members_list:
-        if member["division"] in ("452", "0452"):
-            hours = 0
-            hours_div = 0
-            hours_perf = 0
-            hours_cb = 0
-            hours_prive = 0
-            hours_other = 0
-            for e in member["events"]:
-                hours += e["duration"]
-                if e["etype"] == Etype.DIVISIONNAIRE:
-                    hours_div += e["duration"]
-                elif e["etype"] == Etype.PERFECTIONNEMENT:
-                    hours_perf += e["duration"]
-                elif e["etype"] == Etype.CENTRE_BELL:
-                    hours_cb += e["duration"]
-                elif e["etype"] == Etype.CENTRE_BELL_PRIVE:
-                    hours_prive += e["duration"]
-                else:
-                    hours_other += e["duration"]
-            writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
+#     for member in members_list:
+#         if member["division"] in ("452", "0452"):
+#             hours = 0
+#             hours_div = 0
+#             hours_perf = 0
+#             hours_cb = 0
+#             hours_prive = 0
+#             hours_other = 0
+#             for e in member["events"]:
+#                 hours += e["duration"]
+#                 if e["etype"] == Etype.DIVISIONNAIRE:
+#                     hours_div += e["duration"]
+#                 elif e["etype"] == Etype.PERFECTIONNEMENT:
+#                     hours_perf += e["duration"]
+#                 elif e["etype"] == Etype.CENTRE_BELL:
+#                     hours_cb += e["duration"]
+#                 elif e["etype"] == Etype.CENTRE_BELL_PRIVE:
+#                     hours_prive += e["duration"]
+#                 else:
+#                     hours_other += e["duration"]
+#             writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
 
 if args.write_ld:
     with open('learned_data.json', 'w') as f:
