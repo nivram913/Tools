@@ -56,7 +56,6 @@ def find_member_by_inscription(inscription: str):
     return None
 
 def extract_teamup(start_dt: datetime, end_dt: datetime):
-    TEAMUP_SECRET = ""
     TEAMUP_URL = f"https://teamup.com/{TEAMUP_SECRET}/events?startDate={start_dt.strftime('%Y-%m-%d')}&endDate={end_dt.strftime('%Y-%m-%d')}&tz=America%2FToronto"
 
     resp = requests.get(TEAMUP_URL)
@@ -141,10 +140,13 @@ def valid_date(s):
         raise argparse.ArgumentTypeError(msg)
 
 parser = argparse.ArgumentParser(description="Teamup hours extraction tool 452")
+parser.add_argument("--secret", action="store", required=True, help="Secret Teamup")
 parser.add_argument("--start", action="store", type=valid_date, required=True, help="Date de début au format JJ-MM-AAAA")
 parser.add_argument("--end", action="store", type=valid_date, required=True, help="Date de fin au format JJ-MM-AAAA")
 parser.add_argument("--write-ld", action="store_true", default=False, help="Write learned data to json file")
 args = parser.parse_args()
+
+TEAMUP_SECRET = args.secret
 
 if os.path.exists("learned_data.json"):
     with open("learned_data.json") as f:
@@ -209,31 +211,31 @@ with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
         for event in member["events"]:
             writer.writerow([member["identity"], event["id"], event["name"], event["start_dt"].strftime('%Y-%m-%dT%H:%M')])
 
-# with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
-#     writer = csv.writer(f)
-#     writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
+with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
 
-#     for member in members_list:
-#         if member["division"] in ("452", "0452"):
-#             hours = 0
-#             hours_div = 0
-#             hours_perf = 0
-#             hours_cb = 0
-#             hours_prive = 0
-#             hours_other = 0
-#             for e in member["events"]:
-#                 hours += e["duration"]
-#                 if e["etype"] == Etype.DIVISIONNAIRE:
-#                     hours_div += e["duration"]
-#                 elif e["etype"] == Etype.PERFECTIONNEMENT:
-#                     hours_perf += e["duration"]
-#                 elif e["etype"] == Etype.CENTRE_BELL:
-#                     hours_cb += e["duration"]
-#                 elif e["etype"] == Etype.CENTRE_BELL_PRIVE:
-#                     hours_prive += e["duration"]
-#                 else:
-#                     hours_other += e["duration"]
-#             writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
+    for member in members_list:
+        if member["division"] in ("452", "0452"):
+            hours = 0
+            hours_div = 0
+            hours_perf = 0
+            hours_cb = 0
+            hours_prive = 0
+            hours_other = 0
+            for e in member["events"]:
+                hours += e["duration"]
+                if e["etype"] == Etype.DIVISIONNAIRE:
+                    hours_div += e["duration"]
+                elif e["etype"] == Etype.PERFECTIONNEMENT:
+                    hours_perf += e["duration"]
+                elif e["etype"] == Etype.CENTRE_BELL:
+                    hours_cb += e["duration"]
+                elif e["etype"] == Etype.CENTRE_BELL_PRIVE:
+                    hours_prive += e["duration"]
+                else:
+                    hours_other += e["duration"]
+            writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
 
 if args.write_ld:
     with open('learned_data.json', 'w') as f:
