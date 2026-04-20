@@ -11,10 +11,12 @@ from enum import Enum, auto
 
 class Etype(Enum):
     DIVISIONNAIRE = auto()
+    OTHER_EVENT = auto()
     PERFECTIONNEMENT = auto()
+    OTHER_TRAINING = auto()
     CENTRE_BELL = auto()
     CENTRE_BELL_PRIVE = auto()
-    AUTRE = auto()
+    OTHER = auto()
 
 class Event(TypedDict):
     id: str
@@ -70,14 +72,12 @@ def extract_teamup(start_dt: datetime, end_dt: datetime):
                     "start_dt": datetime.fromisoformat(event["start_dt"]).replace(tzinfo=None),
                     "end_dt": datetime.fromisoformat(event["end_dt"]).replace(tzinfo=None),
                     "duration": int((datetime.fromisoformat(event["end_dt"]) - datetime.fromisoformat(event["start_dt"])).total_seconds() / 3600),
-                    "etype": Etype.AUTRE,
-                    "required_members": event["custom"]["nombre_de_membres_ne_cessaires"],
+                    "etype": Etype.OTHER,
+                    "required_members": event["custom"].get("nombre_de_membres_ne_cessaires", 0),
                     "signups": event["signup_count"]
                 }
 
-                if len(event["subcalendar_ids"]) > 1:
-                    event_obj["etype"] = Etype.AUTRE
-                elif event["subcalendar_id"] == 9616459 and event["title"].startswith("Privé"):
+                if event["subcalendar_id"] == 9616459 and event["title"].startswith("Privé"):
                     event_obj["etype"] = Etype.CENTRE_BELL_PRIVE
                 elif event["subcalendar_id"] == 9616459:
                     event_obj["etype"] = Etype.CENTRE_BELL
@@ -85,8 +85,12 @@ def extract_teamup(start_dt: datetime, end_dt: datetime):
                     event_obj["etype"] = Etype.DIVISIONNAIRE
                 elif event["subcalendar_id"] == 11159835 and event["title"].startswith("Perf."):
                     event_obj["etype"] = Etype.PERFECTIONNEMENT
+                elif "service" in event["custom"].get("cate_gorie_category", []):
+                    event_obj["etype"] = Etype.OTHER_EVENT
+                elif "formation_training" in event["custom"].get("cate_gorie_category", []):
+                    event_obj["etype"] = Etype.OTHER_TRAINING
                 else:
-                    event_obj["etype"] = Etype.AUTRE
+                    event_obj["etype"] = Etype.OTHER
                 events_list.append(event_obj)
 
                 for signup in event["signups"]:
@@ -193,8 +197,12 @@ with open('events.csv', mode='w', newline='', encoding='utf-8') as f:
     for event in events_list:
         if event["etype"] == Etype.DIVISIONNAIRE:
             event_type = "DIVISIONNAIRE"
+        elif event["etype"] == Etype.OTHER_EVENT:
+            event_type = "AUTRE EVENEMENT"
         elif event["etype"] == Etype.PERFECTIONNEMENT:
             event_type = "PERFECTIONNEMENT"
+        elif event["etype"] == Etype.OTHER_TRAINING:
+            event_type = "AUTRE FORMATION"
         elif event["etype"] == Etype.CENTRE_BELL:
             event_type = "CENTRE BELL"
         elif event["etype"] == Etype.CENTRE_BELL_PRIVE:
@@ -213,13 +221,15 @@ with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
 
 with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
-    writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures perfectionnements', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
+    writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures autres événements', 'Heures perfectionnements', 'Heures autres formations', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
 
     for member in members_list:
         if member["division"] in ("452", "0452"):
             hours = 0
             hours_div = 0
+            hours_event = 0
             hours_perf = 0
+            hours_training = 0
             hours_cb = 0
             hours_prive = 0
             hours_other = 0
@@ -227,15 +237,19 @@ with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
                 hours += e["duration"]
                 if e["etype"] == Etype.DIVISIONNAIRE:
                     hours_div += e["duration"]
+                elif e["etype"] == Etype.OTHER_EVENT:
+                    hours_event += e["duration"]
                 elif e["etype"] == Etype.PERFECTIONNEMENT:
                     hours_perf += e["duration"]
+                elif e["etype"] == Etype.OTHER_TRAINING:
+                    hours_training += e["duration"]
                 elif e["etype"] == Etype.CENTRE_BELL:
                     hours_cb += e["duration"]
                 elif e["etype"] == Etype.CENTRE_BELL_PRIVE:
                     hours_prive += e["duration"]
                 else:
                     hours_other += e["duration"]
-            writer.writerow([member["identity"], hours, hours_div, hours_perf, hours_cb, hours_prive, hours_other])
+            writer.writerow([member["identity"], hours, hours_div, hours_event, hours_perf, hours_training, hours_cb, hours_prive, hours_other])
 
 if args.write_ld:
     with open('learned_data.json', 'w') as f:
