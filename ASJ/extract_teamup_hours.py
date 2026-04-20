@@ -190,7 +190,7 @@ while current_date < end_date:
 # Ecriture des CSV #
 ####################
 
-with open('events.csv', mode='w', newline='', encoding='utf-8') as f:
+with open(f'events_{start_date.strftime("%Y-%m-%d")}_to_{end_date.strftime("%Y-%m-%d")}.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     writer.writerow(['ID', 'Nom', 'Type', 'Date', 'Durée', 'Nombre de membres nécessaires', 'Nombre d\'inscrits'])
 
@@ -211,7 +211,7 @@ with open('events.csv', mode='w', newline='', encoding='utf-8') as f:
             event_type = "AUTRE"
         writer.writerow([event["id"], event["name"], event_type, event["start_dt"].strftime('%Y-%m-%dT%H:%M'), event["duration"], event["required_members"], event["signups"]])
 
-with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
+with open(f'inscriptions_{start_date.strftime("%Y-%m-%d")}_to_{end_date.strftime("%Y-%m-%d")}.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     writer.writerow(['Identité', 'ID événement', 'Nom', 'Date'])
 
@@ -219,7 +219,7 @@ with open('inscriptions.csv', mode='w', newline='', encoding='utf-8') as f:
         for event in member["events"]:
             writer.writerow([member["identity"], event["id"], event["name"], event["start_dt"].strftime('%Y-%m-%dT%H:%M')])
 
-with open('members_hours.csv', mode='w', newline='', encoding='utf-8') as f:
+with open(f'members_hours_{start_date.strftime("%Y-%m-%d")}_to_{end_date.strftime("%Y-%m-%d")}.csv', mode='w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     writer.writerow(['Identité', 'Heures totales', 'Heures divisionnaires', 'Heures autres événements', 'Heures perfectionnements', 'Heures autres formations', 'Heures Centre Bell', 'Heures privés', 'Autres heures'])
 
